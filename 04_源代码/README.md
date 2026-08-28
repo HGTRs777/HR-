@@ -21,6 +21,13 @@ F01–F18 已全部完成。在可信问答、主动澄清、情景推演、一�
 
 详细要求见 [配置与运行说明](docs/configuration-guide.md)，业务操作见 [用户手册](docs/user-manual.md)。
 
+演示账号（员工端与 HR 端登录时都需要完成页面上的一次性滑动拼图验证）：
+
+- 员工：`staff` / `88888888`
+- HR：`admin` / `88888888`
+
+初始化会生成员工查询记录、意见箱投递记录、HR 处理进度和数据洞察样例。
+
 ## 本地开发启动
 
 ### 后端
@@ -31,8 +38,8 @@ python -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -r requirements-dev.txt
 Copy-Item .env.example .env
 .\.venv\Scripts\python.exe -m flask --app run.py db upgrade
-.\.venv\Scripts\python.exe -m flask --app run.py create-admin
 .\.venv\Scripts\python.exe -m flask --app run.py seed-policies
+.\.venv\Scripts\python.exe -m flask --app run.py seed-demo-data
 .\.venv\Scripts\python.exe -m flask --app run.py build-index
 .\.venv\Scripts\python.exe run.py
 ```

@@ -10,7 +10,12 @@ $env:APP_ENV = 'production'
 $env:SERVE_FRONTEND = 'true'
 if (-not $env:SECRET_KEY) {
     $RandomBytes = New-Object byte[] 32
-    [System.Security.Cryptography.RandomNumberGenerator]::Fill($RandomBytes)
+    $RandomGenerator = [System.Security.Cryptography.RandomNumberGenerator]::Create()
+    try {
+        $RandomGenerator.GetBytes($RandomBytes)
+    } finally {
+        $RandomGenerator.Dispose()
+    }
     $env:SECRET_KEY = [Convert]::ToBase64String($RandomBytes)
 }
 

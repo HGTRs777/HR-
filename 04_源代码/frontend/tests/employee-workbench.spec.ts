@@ -14,6 +14,11 @@ const chatMocks = vi.hoisted(() => ({
 
 vi.mock('../src/services/chat', () => chatMocks)
 
+const authMocks = vi.hoisted(() => ({
+  fetchEmployeeSession: vi.fn(), fetchHumanChallenge: vi.fn(), loginEmployee: vi.fn(), logoutEmployee: vi.fn(),
+}))
+vi.mock('../src/services/auth', () => authMocks)
+
 const feedbackMocks = vi.hoisted(() => ({ fetchFeedbackDetail: vi.fn(), fetchMyFeedback: vi.fn(), submitFeedback: vi.fn() }))
 vi.mock('../src/services/feedback', () => feedbackMocks)
 
@@ -51,6 +56,10 @@ describe('EmployeeWorkbenchView', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     HTMLElement.prototype.scrollIntoView = vi.fn()
+    authMocks.fetchEmployeeSession.mockResolvedValue({
+      authenticated: true,
+      employee: { id: 1, username: 'staff', display_name: '演示员工', department: '产品与技术中心' },
+    })
     chatMocks.fetchConversations.mockResolvedValue([{
       id: 'conversation-1', title: '年假如何计算？', scenario: {}, message_count: 2, answer_count: 1,
       has_stale_answers: false, created_at: '2026-08-27T00:00:00Z', updated_at: '2026-08-27T00:00:00Z',
@@ -70,6 +79,17 @@ describe('EmployeeWorkbenchView', () => {
     })
     feedbackMocks.fetchMyFeedback.mockResolvedValue([])
     feedbackMocks.submitFeedback.mockResolvedValue({ id: 'feedback-1' })
+  })
+
+  it('shows the employee login and human check before entering the workbench', async () => {
+    authMocks.fetchEmployeeSession.mockResolvedValueOnce({ authenticated: false, employee: null })
+    authMocks.fetchHumanChallenge.mockResolvedValueOnce({ challenge_id: 'challenge-1', prompt: '拖动拼图块，使其与缺口完全重合', target_position: 58, pattern_seed: 120, expires_in: 300 })
+    const wrapper = mount(EmployeeWorkbenchView)
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('登录员工工作台')
+    expect(wrapper.text()).toContain('staff')
+    expect(wrapper.text()).toContain('拖动拼图块')
   })
 
   it('renders conversations, verified claims and a stable-anchor reader', async () => {

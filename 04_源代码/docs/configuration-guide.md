@@ -11,20 +11,20 @@
 ## 2. 首次初始化
 
 ```powershell
-cd C:\Users\29919\Desktop\程序设计实训\公司HR制度智能问答
+cd C:\Users\29919\Desktop\程序设计实训\公司HR制度智能问答\04_源代码
 python -m venv backend\.venv
 .\scripts\setup-demo.ps1
 ```
 
-脚本会安装依赖、复制缺失的 `.env`、执行全部数据库迁移、幂等导入五类示例制度、构建 BGE 索引、创建 HR 管理员并构建前端。复制配置后必须将 `backend/.env` 中的 `SECRET_KEY` 改为随机长字符串；DeepSeek 密钥可留空，系统会进入本地证据降级模式。
+脚本会安装依赖、复制缺失的 `.env`、执行全部数据库迁移、幂等导入五类示例制度、创建统一密码为 `88888888` 的 `staff` 员工与 `admin` HR 演示账号、生成查询/意见/处理进度样例、构建 BGE 索引并构建前端。复制配置后必须将 `backend/.env` 中的 `SECRET_KEY` 改为随机长字符串；DeepSeek 密钥可留空，系统会进入本地证据降级模式。
 
 重复初始化时可使用：
 
 ```powershell
-.\scripts\setup-demo.ps1 -SkipAdminCreation
+.\scripts\setup-demo.ps1 -SkipDependencyInstall -SkipIndexBuild
 ```
 
-可选参数 `-SkipDependencyInstall` 和 `-SkipIndexBuild` 只应在依赖与索引已经可用时使用。
+可选参数 `-SkipDependencyInstall` 和 `-SkipIndexBuild` 只应在依赖与索引已经可用时使用。账号及演示记录仍会幂等检查和补齐。
 
 ## 3. 一键演示
 

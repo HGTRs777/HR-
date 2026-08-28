@@ -207,6 +207,19 @@ export interface AdminSession {
   csrf_token?: string
 }
 
+export interface EmployeeSession {
+  authenticated: boolean
+  employee: { id: number; username: string; display_name: string; department: string } | null
+}
+
+export interface HumanChallenge {
+  challenge_id: string
+  prompt: string
+  target_position: number
+  pattern_seed: number
+  expires_in: number
+}
+
 export interface PolicyClause {
   clause_id: number
   stable_anchor: string

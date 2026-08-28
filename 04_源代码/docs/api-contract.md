@@ -245,12 +245,16 @@
 
 复测不调用生成模型，也不写入员工会话；它使用快照中的规范化问题执行现有 Top 5 混合检索，原证据的稳定锚点均被召回才视为通过。只有状态为 `resolved` 且最近复测通过的意见可固化；同一反馈最多对应一个回归用例。
 
-## 5. 管理认证、制度与索引
+## 5. 员工/管理认证、制度与索引
 
 | 方法与路径 | 行为与关键约束 |
 | --- | --- |
+| `GET /auth/human-challenge` | 生成一次性滑动拼图验证，5 分钟过期 |
+| `POST /employee/auth/login` | 员工用户名、密码及人机答案登录 |
+| `POST /employee/auth/logout` | 清除员工会话 |
+| `GET /employee/auth/session` | 当前员工登录状态和账号概要 |
 | `GET /admin/auth/csrf` | 获取或复用会话 CSRF Token |
-| `POST /admin/auth/login` | 用户名和密码登录，成功后轮换会话 |
+| `POST /admin/auth/login` | 管理员用户名、密码及人机答案登录，成功后轮换会话 |
 | `POST /admin/auth/logout` | 清除管理员会话 |
 | `GET /admin/auth/session` | 当前登录状态和管理员概要 |
 | `GET /admin/policies` | 制度及版本列表 |

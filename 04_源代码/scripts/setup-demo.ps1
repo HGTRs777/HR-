@@ -1,7 +1,6 @@
 param(
     [switch]$SkipDependencyInstall,
-    [switch]$SkipIndexBuild,
-    [switch]$SkipAdminCreation
+    [switch]$SkipIndexBuild
 )
 
 $ErrorActionPreference = 'Stop'
@@ -33,11 +32,8 @@ Push-Location $BackendRoot
 try {
     & $PythonPath -m flask --app run.py db upgrade
     & $PythonPath -m flask --app run.py seed-policies
+    & $PythonPath -m flask --app run.py seed-demo-data
     if (-not $SkipIndexBuild) { & $PythonPath -m flask --app run.py build-index }
-    if (-not $SkipAdminCreation) {
-        Write-Host 'Create the first HR administrator now. On repeated setup runs, use -SkipAdminCreation.'
-        & $PythonPath -m flask --app run.py create-admin
-    }
 } finally {
     Pop-Location
 }

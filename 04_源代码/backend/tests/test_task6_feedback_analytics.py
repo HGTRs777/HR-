@@ -81,7 +81,7 @@ def login(client):
     return client.post("/api/v1/admin/auth/login", json={"username": "hr", "password": "secret123"})
 
 
-def test_anonymous_feedback_copies_answer_snapshot_and_is_isolated(client, app):
+def test_anonymous_feedback_copies_answer_snapshot_and_is_isolated(client, other_employee_client, app):
     seed_environment(app)
     answer = create_answer(client)
     response = submit_feedback(client, answer["answer_id"])
@@ -92,8 +92,8 @@ def test_anonymous_feedback_copies_answer_snapshot_and_is_isolated(client, app):
     assert data["answer_snapshot"]["normalized_question"]
     assert data["answer_snapshot"]["claims"] and data["answer_snapshot"]["evidence"]
     assert data["events"][0]["action"] == "submitted"
-    assert client.get("/api/v1/feedback", headers=OTHER_HEADERS).get_json()["data"] == []
-    assert client.get(f"/api/v1/feedback/{data['id']}", headers=OTHER_HEADERS).status_code == 404
+    assert other_employee_client.get("/api/v1/feedback", headers=OTHER_HEADERS).get_json()["data"] == []
+    assert other_employee_client.get(f"/api/v1/feedback/{data['id']}", headers=OTHER_HEADERS).status_code == 404
 
     client.delete(f"/api/v1/conversations/{answer['conversation_id']}", headers=CLIENT_HEADERS)
     preserved = client.get(f"/api/v1/feedback/{data['id']}", headers=CLIENT_HEADERS).get_json()["data"]

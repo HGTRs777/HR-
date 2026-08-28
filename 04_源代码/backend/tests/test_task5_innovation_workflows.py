@@ -106,7 +106,7 @@ def test_replay_records_scenario_diff_and_evidence_bound_action_card(client, app
     assert all(set(step["evidence_ids"]).issubset(evidence_ids) for step in steps)
 
 
-def test_replay_rejects_no_change_and_cross_session_access(client, app):
+def test_replay_rejects_no_change_and_cross_session_access(client, other_employee_client, app):
     seed_index(app)
     initial = client.post(
         "/api/v1/chat/query",
@@ -119,7 +119,7 @@ def test_replay_rejects_no_change_and_cross_session_access(client, app):
         json={"answer_id": initial["answer_id"], "scenario": {"tenure_years": 3}},
     )
     assert unchanged.status_code == 400
-    forbidden = client.post(
+    forbidden = other_employee_client.post(
         "/api/v1/chat/replay",
         headers=OTHER_HEADERS,
         json={"answer_id": initial["answer_id"], "scenario": {"tenure_years": 12}},
@@ -161,4 +161,3 @@ def test_current_answer_does_not_need_refresh(client, app):
     ).get_json()["data"]
     response = client.post(f"/api/v1/answers/{current['answer_id']}/refresh", headers=CLIENT_HEADERS)
     assert response.status_code == 409
-

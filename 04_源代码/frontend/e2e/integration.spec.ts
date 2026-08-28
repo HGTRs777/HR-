@@ -7,6 +7,13 @@ function captureBrowserErrors(page: import('@playwright/test').Page): string[] {
   return errors
 }
 
+async function solveHumanCheck(page: import('@playwright/test').Page): Promise<void> {
+  const targetStyle = await page.locator('.puzzle-target').getAttribute('style')
+  const target = Number(targetStyle?.match(/calc\((\d+)%/)?.[1] ?? 0)
+  await page.getByRole('slider', { name: '滑动拼图位置' }).fill(String(target))
+  await expect(page.getByText('验证通过')).toBeVisible()
+}
+
 test('employee query, clarification/refusal and responsive workspace are integrated', async ({ page, request }, testInfo) => {
   const browserErrors = captureBrowserErrors(page)
   await page.addInitScript((sessionId) => localStorage.setItem('hr-policy-client-session-id', sessionId), `task7-e2e-${testInfo.project.name}`)
@@ -14,6 +21,8 @@ test('employee query, clarification/refusal and responsive workspace are integra
   expect(health.ok()).toBeTruthy()
 
   await page.goto('/')
+  await solveHumanCheck(page)
+  await page.getByRole('button', { name: '登录员工端', exact: true }).click()
   await expect(page.getByRole('heading', { name: '每条结论，都能点回制度原文' })).toBeVisible()
   await page.getByRole('button', { name: '年假如何计算？', exact: true }).click()
   await page.getByRole('button', { name: '发送问题', exact: true }).click()
@@ -28,13 +37,13 @@ test('employee query, clarification/refusal and responsive workspace are integra
 
 test('HR dashboard loads policies, analytics and feedback governance', async ({ page }) => {
   const browserErrors = captureBrowserErrors(page)
-  const username = process.env.E2E_ADMIN_USERNAME
-  const password = process.env.E2E_ADMIN_PASSWORD
-  test.skip(!username || !password, 'Set E2E_ADMIN_USERNAME and E2E_ADMIN_PASSWORD for the HR flow.')
+  const username = process.env.E2E_ADMIN_USERNAME ?? 'admin'
+  const password = process.env.E2E_ADMIN_PASSWORD ?? '88888888'
 
   await page.goto('/admin')
-  await page.getByLabel('用户名', { exact: true }).fill(username!)
-  await page.getByLabel('密码', { exact: true }).fill(password!)
+  await page.getByLabel('用户名', { exact: true }).fill(username)
+  await page.getByLabel('密码', { exact: true }).fill(password)
+  await solveHumanCheck(page)
   await page.getByRole('button', { name: '登录', exact: true }).click()
   await expect(page.getByRole('heading', { name: '制度生命周期与可信度控制台' })).toBeVisible()
   await expect(page.getByRole('heading', { name: '问答数据洞察' })).toBeVisible()

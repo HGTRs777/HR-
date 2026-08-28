@@ -17,8 +17,10 @@ import 'element-plus/es/components/skeleton/style/css'
 import 'element-plus/es/components/tag/style/css'
 
 import { askQuestion, createConversation, fetchConversation, fetchConversations, fetchPolicyReader, refreshAnswer, removeConversation, replayAnswer } from '../services/chat'
+import { fetchEmployeeSession, fetchHumanChallenge, loginEmployee, logoutEmployee } from '../services/auth'
 import { fetchMyFeedback, submitFeedback } from '../services/feedback'
-import type { ChatAnswer, ClarificationOption, ConversationDetail, ConversationSummary, Evidence, FeedbackRecord, FeedbackType, PolicyReader, ScenarioChange, ScenarioState } from '../types/api'
+import SliderPuzzleCaptcha from '../components/SliderPuzzleCaptcha.vue'
+import type { ChatAnswer, ClarificationOption, ConversationDetail, ConversationSummary, EmployeeSession, Evidence, FeedbackRecord, FeedbackType, HumanChallenge, PolicyReader, ScenarioChange, ScenarioState } from '../types/api'
 
 const exampleQuestions = ['年假如何计算？', '差旅报销最晚什么时候提交？', '入职需要准备哪些材料？']
 const conversations = ref<ConversationSummary[]>([])
@@ -39,6 +41,11 @@ const scenarioChanges = ref<ScenarioChange[]>([])
 const feedbackRecords = ref<FeedbackRecord[]>([])
 const feedbackDialogVisible = ref(false)
 const feedbackSubmitting = ref(false)
+const employeeSession = ref<EmployeeSession>({ authenticated: false, employee: null })
+const checkingEmployeeSession = ref(true)
+const employeeLoginLoading = ref(false)
+const humanChallenge = ref<HumanChallenge | null>(null)
+const employeeLoginForm = reactive({ username: 'staff', password: '88888888', slider_position: null as number | null })
 const feedbackForm = reactive({
   feedback_type: 'wrong_answer' as FeedbackType,
   content: '',
@@ -64,6 +71,16 @@ const actionSections = computed(() => {
     { key: 'cautions', title: '注意事项', items: card.cautions },
   ].filter((section) => section.items.length)
 })
+const employeeStats = computed(() => ({
+  conversations: conversations.value.length,
+  questions: conversations.value.reduce((total, item) => total + item.answer_count, 0),
+  feedback: feedbackRecords.value.length,
+  processing: feedbackRecords.value.filter((item) => item.status === 'processing' || item.status === 'open').length,
+}))
+const employeePuzzleAligned = computed(() => (
+  humanChallenge.value !== null && employeeLoginForm.slider_position !== null
+  && Math.abs(employeeLoginForm.slider_position - humanChallenge.value.target_position) <= 3
+))
 
 function readableError(error: unknown): string {
   return error instanceof Error ? error.message : '请求失败，请稍后重试'
@@ -86,6 +103,55 @@ async function loadFeedbackList(): Promise<void> {
     feedbackRecords.value = await fetchMyFeedback()
   } catch (error) {
     errorMessage.value = readableError(error)
+  }
+}
+
+async function loadHumanChallenge(): Promise<void> {
+  try {
+    humanChallenge.value = await fetchHumanChallenge()
+    employeeLoginForm.slider_position = null
+  } catch (error) {
+    ElMessage.error(readableError(error))
+  }
+}
+
+async function submitEmployeeLogin(): Promise<void> {
+  if (!employeeLoginForm.username.trim() || !employeeLoginForm.password || !employeePuzzleAligned.value || !humanChallenge.value) {
+    ElMessage.warning('请完整填写账号、密码并完成滑动拼图')
+    return
+  }
+  employeeLoginLoading.value = true
+  try {
+    employeeSession.value = await loginEmployee(
+      employeeLoginForm.username.trim(), employeeLoginForm.password,
+      humanChallenge.value.challenge_id, Number(employeeLoginForm.slider_position),
+    )
+    employeeLoginForm.password = ''
+    employeeLoginForm.slider_position = null
+    await Promise.all([loadConversationList(), loadFeedbackList()])
+    const first = conversations.value[0]
+    if (first) await openConversation(first.id)
+    ElMessage.success('员工登录成功')
+  } catch (error) {
+    ElMessage.error(readableError(error))
+    await loadHumanChallenge()
+  } finally {
+    employeeLoginLoading.value = false
+  }
+}
+
+async function signOutEmployee(): Promise<void> {
+  try {
+    await logoutEmployee()
+    employeeSession.value = { authenticated: false, employee: null }
+    conversations.value = []
+    feedbackRecords.value = []
+    currentConversation.value = null
+    selectedAnswer.value = null
+    employeeLoginForm.password = '88888888'
+    await loadHumanChallenge()
+  } catch (error) {
+    ElMessage.error(readableError(error))
   }
 }
 
@@ -308,13 +374,48 @@ async function focusEvidence(evidence: Evidence): Promise<void> {
 }
 
 onMounted(async () => {
-  await Promise.all([loadConversationList(), loadFeedbackList()])
-  const first = conversations.value[0]
-  if (first) await openConversation(first.id)
+  try {
+    employeeSession.value = await fetchEmployeeSession()
+    if (employeeSession.value.authenticated) {
+      await Promise.all([loadConversationList(), loadFeedbackList()])
+      const first = conversations.value[0]
+      if (first) await openConversation(first.id)
+    } else {
+      await loadHumanChallenge()
+    }
+  } catch (error) {
+    ElMessage.error(readableError(error))
+    await loadHumanChallenge()
+  } finally {
+    checkingEmployeeSession.value = false
+  }
 })
 </script>
 
 <template>
+  <el-skeleton v-if="checkingEmployeeSession" :rows="8" animated />
+
+  <section v-else-if="!employeeSession.authenticated" class="admin-login-shell employee-login-shell">
+    <div class="login-story employee-login-story">
+      <p class="eyebrow">员工安全入口</p>
+      <h1>登录后，继续你的制度咨询与意见跟踪</h1>
+      <p>查询历史、情景推演和意见处理进度都会保存在员工账号下，便于跨次查看。</p>
+      <div class="login-feature-grid"><span>历史咨询可追溯</span><span>意见进度可跟踪</span><span>制度证据可核验</span></div>
+      <div class="login-assurance" aria-label="员工使用流程"><span><b>01</b>登录账号</span><span><b>02</b>查询制度</span><span><b>03</b>跟踪意见</span></div>
+    </div>
+    <el-form class="login-card" label-position="top" @submit.prevent="submitEmployeeLogin">
+      <div class="login-card-heading"><span class="panel-index">员工认证</span><h2>登录员工工作台</h2><p>演示账号：staff　密码：88888888</p></div>
+      <el-form-item label="用户名"><el-input v-model="employeeLoginForm.username" autocomplete="username" placeholder="请输入员工用户名" /></el-form-item>
+      <el-form-item label="密码"><el-input v-model="employeeLoginForm.password" type="password" show-password autocomplete="current-password" placeholder="请输入登录密码" /></el-form-item>
+      <el-form-item label="人机验证">
+        <slider-puzzle-captcha v-if="humanChallenge" v-model="employeeLoginForm.slider_position" :challenge="humanChallenge" @refresh="loadHumanChallenge" />
+        <el-skeleton v-else :rows="2" animated />
+      </el-form-item>
+      <el-button native-type="submit" type="primary" size="large" :loading="employeeLoginLoading" :disabled="!employeePuzzleAligned">登录员工端</el-button>
+    </el-form>
+  </section>
+
+  <template v-else>
   <section class="hero-panel compact employee-hero">
     <div class="hero-copy">
       <p class="eyebrow">员工制度助手</p>
@@ -327,9 +428,16 @@ onMounted(async () => {
       </div>
     </div>
     <div class="hero-cta">
-      <small>无需录入员工敏感档案</small>
-      <el-button type="primary" size="large" @click="startConversation">新建制度咨询</el-button>
+      <small>{{ employeeSession.employee?.display_name }} · {{ employeeSession.employee?.department }}</small>
+      <div class="hero-actions"><el-button type="primary" size="large" @click="startConversation">新建制度咨询</el-button><el-button @click="signOutEmployee">退出登录</el-button></div>
     </div>
+  </section>
+
+  <section class="metric-grid employee-metrics" aria-label="我的使用数据">
+    <article class="metric-card"><span>历史会话</span><strong>{{ employeeStats.conversations }}</strong><small>可继续追问与推演</small></article>
+    <article class="metric-card"><span>制度查询</span><strong>{{ employeeStats.questions }}</strong><small>含演示与后续查询</small></article>
+    <article class="metric-card"><span>意见投递</span><strong>{{ employeeStats.feedback }}</strong><small>实名与匿名均可</small></article>
+    <article class="metric-card"><span>待跟进意见</span><strong>{{ employeeStats.processing }}</strong><small>待处理或处理中</small></article>
   </section>
 
   <el-alert v-if="errorMessage" class="page-alert" type="error" :title="errorMessage" show-icon closable @close="errorMessage = ''" />
@@ -481,4 +589,5 @@ onMounted(async () => {
     </el-form>
     <template #footer><el-button @click="feedbackDialogVisible = false">取消</el-button><el-button type="primary" :loading="feedbackSubmitting" @click="sendFeedback">提交并保存快照</el-button></template>
   </el-dialog>
+  </template>
 </template>

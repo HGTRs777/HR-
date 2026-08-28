@@ -10,6 +10,9 @@ const adminMocks = vi.hoisted(() => ({
 
 vi.mock('../src/services/admin', () => adminMocks)
 
+const authMocks = vi.hoisted(() => ({ fetchHumanChallenge: vi.fn() }))
+vi.mock('../src/services/auth', () => authMocks)
+
 import AdminDashboardView from '../src/views/AdminDashboardView.vue'
 
 describe('AdminDashboardView', () => {
@@ -48,6 +51,17 @@ describe('AdminDashboardView', () => {
       daily_queries: [], policy_hits: [], filters: { date_from: null, date_to: null, policy_id: null, feedback_status: null },
     })
     adminMocks.updateFeedbackStatus.mockResolvedValue({})
+  })
+
+  it('shows the HR login and human check before entering the console', async () => {
+    adminMocks.fetchAdminSession.mockResolvedValueOnce({ authenticated: false, admin: null })
+    authMocks.fetchHumanChallenge.mockResolvedValueOnce({ challenge_id: 'challenge-2', prompt: '拖动拼图块，使其与缺口完全重合', target_position: 66, pattern_seed: 240, expires_in: 300 })
+    const wrapper = mount(AdminDashboardView)
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('登录 HR 控制台')
+    expect(wrapper.text()).toContain('admin')
+    expect(wrapper.text()).toContain('拖动拼图块')
   })
 
   it('shows authenticated policy, index and retrieval management modules', async () => {

@@ -58,10 +58,12 @@ def evidence_bound_generator(_question, _history, evidence):
     }
 
 
-def test_client_session_header_is_required(client):
+def test_employee_login_is_required(client):
+    with client.session_transaction() as user_session:
+        user_session.clear()
     response = client.get("/api/v1/conversations")
-    assert response.status_code == 400
-    assert response.get_json()["error"]["code"] == "VALIDATION_ERROR"
+    assert response.status_code == 401
+    assert response.get_json()["error"]["code"] == "AUTH_REQUIRED"
 
 
 def test_model_unavailable_returns_persisted_local_evidence(client, app):
@@ -156,10 +158,10 @@ def test_follow_up_uses_previous_question_and_last_messages(client, app):
     assert len(calls[-1][1]) == 2
 
 
-def test_conversations_are_isolated_and_deletable(client, app):
+def test_conversations_are_isolated_and_deletable(client, other_employee_client, app):
     seed_index(app)
     created = client.post("/api/v1/conversations", headers=CLIENT_HEADERS, json={"title": "我的会话"}).get_json()["data"]
-    assert client.get(f"/api/v1/conversations/{created['id']}", headers=OTHER_HEADERS).status_code == 404
+    assert other_employee_client.get(f"/api/v1/conversations/{created['id']}", headers=OTHER_HEADERS).status_code == 404
     assert len(client.get("/api/v1/conversations", headers=CLIENT_HEADERS).get_json()["data"]) == 1
     assert client.delete(f"/api/v1/conversations/{created['id']}", headers=CLIENT_HEADERS).status_code == 200
     with app.app_context():

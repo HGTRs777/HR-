@@ -33,8 +33,13 @@ export async function fetchAdminSession(): Promise<AdminSession> {
   return response.data.data
 }
 
-export async function loginAdmin(username: string, password: string): Promise<AdminSession> {
-  const response = await http.post<ApiSuccess<AdminSession>>('/admin/auth/login', { username, password })
+export async function loginAdmin(username: string, password: string, challengeId: string, sliderPosition: number): Promise<AdminSession> {
+  const response = await http.post<ApiSuccess<AdminSession>>('/admin/auth/login', {
+    username,
+    password,
+    challenge_id: challengeId,
+    slider_position: sliderPosition,
+  })
   rememberCsrfToken(response.data.data.csrf_token ?? null)
   return response.data.data
 }

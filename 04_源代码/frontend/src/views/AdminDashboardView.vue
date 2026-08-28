@@ -24,7 +24,9 @@ import {
   retestFeedback, testSearch, updateFeedbackStatus, updatePolicyVersion, uploadPolicy,
   type AdminFeedbackFilters, type SearchTestResponse,
 } from '../services/admin'
-import type { AdminSession, AnalyticsSummary, FeedbackRecord, FeedbackType, IndexStatus, PolicyReader, PolicySummary, PolicyVersionSummary, RegressionCase } from '../types/api'
+import { fetchHumanChallenge } from '../services/auth'
+import SliderPuzzleCaptcha from '../components/SliderPuzzleCaptcha.vue'
+import type { AdminSession, AnalyticsSummary, FeedbackRecord, FeedbackType, HumanChallenge, IndexStatus, PolicyReader, PolicySummary, PolicyVersionSummary, RegressionCase } from '../types/api'
 
 const session = ref<AdminSession>({ authenticated: false, admin: null })
 const checkingSession = ref(true)
@@ -46,13 +48,18 @@ const analytics = ref<AnalyticsSummary | null>(null)
 const governanceLoading = ref(false)
 const feedbackNotes = reactive<Record<string, string>>({})
 const feedbackFilters = reactive<AdminFeedbackFilters>({ status: '', feedback_type: '', policy_id: '', date_from: '', date_to: '' })
-const loginForm = reactive({ username: '', password: '' })
+const loginForm = reactive({ username: 'admin', password: '88888888', slider_position: null as number | null })
+const humanChallenge = ref<HumanChallenge | null>(null)
 const uploadForm = reactive({ code: '', title: '', category: '', version: '1.0', effective_date: '', file: null as File | null })
 
 const policyCount = computed(() => policies.value.length)
 const versionCount = computed(() => policies.value.reduce((total, item) => total + item.version_count, 0))
 const activeVersionCount = computed(() => policies.value.filter((item) => item.active_version_id !== null).length)
 const indexTagType = computed(() => index.value?.status === 'ready' ? 'success' : index.value?.status === 'stale' ? 'warning' : 'info')
+const adminPuzzleAligned = computed(() => (
+  humanChallenge.value !== null && loginForm.slider_position !== null
+  && Math.abs(loginForm.slider_position - humanChallenge.value.target_position) <= 3
+))
 
 function readableError(error: unknown): string {
   return error instanceof Error ? error.message : '操作失败，请稍后重试'
@@ -159,20 +166,33 @@ async function solidifyRegression(item: FeedbackRecord): Promise<void> {
 }
 
 async function submitLogin(): Promise<void> {
-  if (!loginForm.username.trim() || !loginForm.password) {
-    ElMessage.warning('请输入用户名和密码')
+  if (!loginForm.username.trim() || !loginForm.password || !adminPuzzleAligned.value || !humanChallenge.value) {
+    ElMessage.warning('请完整填写账号、密码并完成滑动拼图')
     return
   }
   loginLoading.value = true
   try {
-    session.value = await loginAdmin(loginForm.username.trim(), loginForm.password)
+    session.value = await loginAdmin(
+      loginForm.username.trim(), loginForm.password, humanChallenge.value.challenge_id, Number(loginForm.slider_position),
+    )
     loginForm.password = ''
+    loginForm.slider_position = null
     await loadDashboard()
     ElMessage.success('登录成功')
   } catch (error) {
     ElMessage.error(readableError(error))
+    await loadHumanChallenge()
   } finally {
     loginLoading.value = false
+  }
+}
+
+async function loadHumanChallenge(): Promise<void> {
+  try {
+    humanChallenge.value = await fetchHumanChallenge()
+    loginForm.slider_position = null
+  } catch (error) {
+    ElMessage.error(readableError(error))
   }
 }
 
@@ -186,6 +206,8 @@ async function signOut(): Promise<void> {
     feedbackRecords.value = []
     regressionCases.value = []
     analytics.value = null
+    loginForm.password = '88888888'
+    await loadHumanChallenge()
   } catch (error) {
     ElMessage.error(readableError(error))
   }
@@ -289,6 +311,7 @@ onMounted(async () => {
   try {
     session.value = await fetchAdminSession()
     if (session.value.authenticated) await loadDashboard()
+    else await loadHumanChallenge()
   } catch (error) {
     ElMessage.error(readableError(error))
   } finally {
@@ -315,10 +338,14 @@ onMounted(async () => {
       </div>
     </div>
     <el-form class="login-card" label-position="top" @submit.prevent="submitLogin">
-      <div class="login-card-heading"><span class="panel-index">管理员认证</span><h2>登录 HR 控制台</h2><p>使用已分配的管理员账户继续</p></div>
+      <div class="login-card-heading"><span class="panel-index">管理员认证</span><h2>登录 HR 控制台</h2><p>演示账号：admin　密码：88888888</p></div>
       <el-form-item label="用户名"><el-input v-model="loginForm.username" autocomplete="username" placeholder="请输入管理员用户名" /></el-form-item>
       <el-form-item label="密码"><el-input v-model="loginForm.password" type="password" show-password autocomplete="current-password" placeholder="至少 8 位密码" @keyup.enter="submitLogin" /></el-form-item>
-      <el-button native-type="submit" type="primary" size="large" :loading="loginLoading">登录</el-button>
+      <el-form-item label="人机验证">
+        <slider-puzzle-captcha v-if="humanChallenge" v-model="loginForm.slider_position" :challenge="humanChallenge" @refresh="loadHumanChallenge" />
+        <el-skeleton v-else :rows="2" animated />
+      </el-form-item>
+      <el-button native-type="submit" type="primary" size="large" :loading="loginLoading" :disabled="!adminPuzzleAligned">登录</el-button>
     </el-form>
   </section>
 

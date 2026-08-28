@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from flask import Blueprint, g, request
 
-from ..auth import admin_required
+from ..auth import admin_required, employee_required
 from ..errors import ApiError, ErrorCode, success
 from ..services.analytics import analytics_summary
 from ..services.feedback import (
@@ -25,6 +25,7 @@ admin_feedback_bp = Blueprint("admin_feedback", __name__)
 
 
 @feedback_bp.post("/feedback")
+@employee_required
 def submit_feedback():
     payload = request.get_json(silent=True)
     if not isinstance(payload, dict):
@@ -34,11 +35,13 @@ def submit_feedback():
 
 
 @feedback_bp.get("/feedback")
+@employee_required
 def employee_feedback_list():
     return success(list_employee_feedback(client_session_id()))
 
 
 @feedback_bp.get("/feedback/<feedback_id>")
+@employee_required
 def employee_feedback_detail(feedback_id: str):
     item = get_employee_feedback(feedback_id, client_session_id())
     return success(serialize_feedback(item, include_snapshot=True))
