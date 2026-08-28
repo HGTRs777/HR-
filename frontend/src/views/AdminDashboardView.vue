@@ -308,9 +308,14 @@ onMounted(async () => {
       <div class="login-feature-grid">
         <span>版本唯一启用</span><span>原子索引发布</span><span>Top 5 可解释检索</span>
       </div>
+      <div class="login-assurance" aria-label="治理流程">
+        <span><b>01</b>上传与解析</span>
+        <span><b>02</b>审核并启用</span>
+        <span><b>03</b>重建可信索引</span>
+      </div>
     </div>
     <el-form class="login-card" label-position="top" @submit.prevent="submitLogin">
-      <div><span class="panel-index">管理员认证</span><h2>登录 HR 控制台</h2></div>
+      <div class="login-card-heading"><span class="panel-index">管理员认证</span><h2>登录 HR 控制台</h2><p>使用已分配的管理员账户继续</p></div>
       <el-form-item label="用户名"><el-input v-model="loginForm.username" autocomplete="username" placeholder="请输入管理员用户名" /></el-form-item>
       <el-form-item label="密码"><el-input v-model="loginForm.password" type="password" show-password autocomplete="current-password" placeholder="至少 8 位密码" @keyup.enter="submitLogin" /></el-form-item>
       <el-button native-type="submit" type="primary" size="large" :loading="loginLoading">登录</el-button>
@@ -319,8 +324,8 @@ onMounted(async () => {
 
   <template v-else>
     <section class="hero-panel compact admin-hero">
-      <div><p class="eyebrow">HR 知识治理</p><h1>制度生命周期与可信度控制台</h1><p>你好，{{ session.admin?.username }}。上传制度、启用版本、原子重建索引，再用 Top 5 验证检索质量。</p></div>
-      <div class="hero-actions"><el-button type="primary" @click="uploadDialogVisible = true">上传制度版本</el-button><el-button @click="signOut">退出登录</el-button></div>
+      <div class="hero-copy"><p class="eyebrow">HR 知识治理</p><h1>制度生命周期与可信度控制台</h1><p>你好，{{ session.admin?.username }}。上传制度、启用版本、原子重建索引，再用 Top 5 验证检索质量。</p></div>
+      <div class="admin-hero-side"><span>当前工作区 · HR 管理端</span><div class="hero-actions"><el-button type="primary" @click="uploadDialogVisible = true">上传制度版本</el-button><el-button @click="signOut">退出登录</el-button></div></div>
     </section>
 
     <section class="metric-grid admin-metrics">

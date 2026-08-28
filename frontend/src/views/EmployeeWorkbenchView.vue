@@ -316,12 +316,20 @@ onMounted(async () => {
 
 <template>
   <section class="hero-panel compact employee-hero">
-    <div>
+    <div class="hero-copy">
       <p class="eyebrow">员工制度助手</p>
       <h1>每条结论，都能点回制度原文</h1>
       <p>支持多轮追问、低依据拒答和 DeepSeek 异常降级。系统只展示服务端已验证的制度结论。</p>
+      <div class="hero-proof" aria-label="产品可信能力">
+        <span><i aria-hidden="true"></i>制度原文可追溯</span>
+        <span><i aria-hidden="true"></i>办理条件可推演</span>
+        <span><i aria-hidden="true"></i>低依据主动拒答</span>
+      </div>
     </div>
-    <el-button type="primary" size="large" @click="startConversation">新建制度咨询</el-button>
+    <div class="hero-cta">
+      <small>无需录入员工敏感档案</small>
+      <el-button type="primary" size="large" @click="startConversation">新建制度咨询</el-button>
+    </div>
   </section>
 
   <el-alert v-if="errorMessage" class="page-alert" type="error" :title="errorMessage" show-icon closable @close="errorMessage = ''" />
