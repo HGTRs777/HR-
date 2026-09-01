@@ -48,3 +48,18 @@ def embed_texts(texts: list[str]) -> np.ndarray:
             _models[model_name] = model
     result = model.encode(texts, normalize_embeddings=True, convert_to_numpy=True, show_progress_bar=False)
     return np.asarray(result, dtype=np.float32)
+
+
+def start_embedding_warmup(app) -> None:
+    if app.config.get("TESTING") or app.config.get("EMBEDDING_BACKEND") == "hash":
+        return
+
+    def warm() -> None:
+        with app.app_context():
+            try:
+                embed_texts(["企业制度混合检索预热"])
+                app.logger.info("embedding model warmed up")
+            except Exception:
+                app.logger.exception("embedding model warmup failed; first search will retry")
+
+    threading.Thread(target=warm, name="embedding-warmup", daemon=True).start()

@@ -13,6 +13,8 @@ from .extensions import cors, db, migrate
 from .logging_config import configure_logging
 from .request_context import register_request_context
 from .security import register_csrf_protection
+from .services.policy_gaps import start_policy_gap_scheduler
+from .services.embedding import start_embedding_warmup
 
 
 def register_frontend(app: Flask) -> None:
@@ -56,6 +58,8 @@ def create_app(config_name: str | None = None) -> Flask:
     register_cli(app)
     app.register_blueprint(api_v1, url_prefix="/api/v1")
     register_frontend(app)
+    start_embedding_warmup(app)
+    start_policy_gap_scheduler(app)
 
     logging.getLogger(__name__).info("application initialized", extra={"app_env": app.config["APP_ENV"]})
     return app

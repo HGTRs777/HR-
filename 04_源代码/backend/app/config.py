@@ -41,6 +41,11 @@ class BaseConfig:
     DEEPSEEK_MODEL = os.getenv("DEEPSEEK_MODEL", "deepseek-v4-flash")
     DEEPSEEK_TIMEOUT_SECONDS = float(os.getenv("DEEPSEEK_TIMEOUT_SECONDS", "30"))
     DEEPSEEK_MAX_OUTPUT_TOKENS = int(os.getenv("DEEPSEEK_MAX_OUTPUT_TOKENS", "1600"))
+    DEEPSEEK_MAX_RETRIES = min(max(int(os.getenv("DEEPSEEK_MAX_RETRIES", "2")), 0), 2)
+    DEEPSEEK_RETRY_BACKOFF_SECONDS = float(os.getenv("DEEPSEEK_RETRY_BACKOFF_SECONDS", "0.25"))
+    POLICY_GAP_SCAN_ENABLED = os.getenv("POLICY_GAP_SCAN_ENABLED", "true").lower() == "true"
+    POLICY_GAP_SCAN_INTERVAL_HOURS = float(os.getenv("POLICY_GAP_SCAN_INTERVAL_HOURS", "24"))
+    POLICY_GAP_SCAN_POLL_SECONDS = int(os.getenv("POLICY_GAP_SCAN_POLL_SECONDS", "300"))
     RETRIEVAL_MIN_VECTOR_SCORE = float(os.getenv("RETRIEVAL_MIN_VECTOR_SCORE", "0.54"))
     CLAIM_EVIDENCE_MIN_SCORE = float(os.getenv("CLAIM_EVIDENCE_MIN_SCORE", "0.50"))
 
@@ -63,6 +68,7 @@ class TestingConfig(BaseConfig):
     EMBEDDING_BACKEND = "hash"
     RETRIEVAL_MIN_VECTOR_SCORE = -1.0
     CLAIM_EVIDENCE_MIN_SCORE = -1.0
+    POLICY_GAP_SCAN_ENABLED = False
 
 
 class ProductionConfig(BaseConfig):

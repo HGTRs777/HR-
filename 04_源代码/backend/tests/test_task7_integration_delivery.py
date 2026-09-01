@@ -51,8 +51,9 @@ def seed_index(app) -> None:
 def test_answer_json_contract_matches_frozen_public_shape(client, app):
     seed_index(app)
     app.config["ANSWER_GENERATOR"] = lambda _question, _history, evidence: {
-        "summary": "结构占位",
+        "decision": "informational", "conclusion": "需要",
         "claims": [{"text": evidence[0]["quote"], "evidence_ids": [evidence[0]["id"]]}],
+        "next_steps": [], "missing_conditions": [],
     }
     response = client.post(
         "/api/v1/chat/query",
@@ -62,7 +63,8 @@ def test_answer_json_contract_matches_frozen_public_shape(client, app):
     assert response.status_code == 200
     data = response.get_json()["data"]
     required = {
-        "answer_id", "conversation_id", "status", "summary", "claims", "scenario", "clarification",
+        "answer_id", "conversation_id", "status", "decision", "conclusion", "summary", "claims",
+        "next_steps", "missing_conditions", "scenario", "clarification",
         "action_card", "source_answer_id", "generation_kind", "evidence", "evidence_coverage",
         "knowledge_fingerprint", "stale", "degraded", "created_at",
     }

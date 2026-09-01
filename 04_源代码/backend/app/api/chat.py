@@ -12,6 +12,7 @@ from ..services.chat import (
     delete_conversation,
     get_answer,
     list_conversations,
+    update_conversation,
     refresh_answer,
     replay_answer,
     serialize_answer,
@@ -44,7 +45,7 @@ def query():
     payload = request.get_json(silent=True)
     if not isinstance(payload, dict):
         raise ApiError(ErrorCode.VALIDATION_ERROR, "请求体必须为 JSON 对象", 400)
-    answer = submit_question(client_session_id(), payload)
+    answer = submit_question(client_session_id(), payload, employee=g.employee_user)
     return success(serialize_answer(answer))
 
 
@@ -54,10 +55,14 @@ def replay():
     payload = request.get_json(silent=True)
     if not isinstance(payload, dict):
         raise ApiError(ErrorCode.VALIDATION_ERROR, "请求体必须为 JSON 对象", 400)
-    answer, changes = replay_answer(client_session_id(), payload)
+    answer, changes = replay_answer(client_session_id(), payload, employee=g.employee_user)
     return success(
         serialize_answer(answer),
-        meta={"previous_answer_id": payload["answer_id"], "scenario_changes": changes},
+        meta={
+            "previous_answer_id": payload["answer_id"],
+            "scenario_changes": changes,
+            "recalculation_message": "条件已更新，回答和办理建议已重新计算。",
+        },
     )
 
 
@@ -78,6 +83,7 @@ def new_conversation():
         {
             "id": conversation.id,
             "title": conversation.title,
+            "is_pinned": conversation.is_pinned,
             "scenario": conversation.scenario_state,
             "created_at": conversation.created_at.isoformat(),
             "updated_at": conversation.updated_at.isoformat(),
@@ -90,6 +96,21 @@ def new_conversation():
 @employee_required
 def get_conversation(conversation_id: str):
     return success(conversation_detail(conversation_id, client_session_id()))
+
+
+@chat_bp.patch("/conversations/<conversation_id>")
+@employee_required
+def patch_conversation(conversation_id: str):
+    payload = request.get_json(silent=True)
+    if not isinstance(payload, dict):
+        raise ApiError(ErrorCode.VALIDATION_ERROR, "请求体必须为 JSON 对象", 400)
+    conversation = update_conversation(conversation_id, client_session_id(), payload)
+    return success({
+        "id": conversation.id,
+        "title": conversation.title,
+        "is_pinned": conversation.is_pinned,
+        "updated_at": conversation.updated_at.isoformat(),
+    })
 
 
 @chat_bp.delete("/conversations/<conversation_id>")
@@ -108,5 +129,5 @@ def answer_detail(answer_id: str):
 @chat_bp.post("/answers/<answer_id>/refresh")
 @employee_required
 def refresh(answer_id: str):
-    answer, meta = refresh_answer(client_session_id(), answer_id)
+    answer, meta = refresh_answer(client_session_id(), answer_id, employee=g.employee_user)
     return success(serialize_answer(answer), meta=meta)

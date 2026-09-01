@@ -16,7 +16,7 @@ python -m venv backend\.venv
 .\scripts\setup-demo.ps1
 ```
 
-脚本会安装依赖、复制缺失的 `.env`、执行全部数据库迁移、幂等导入五类示例制度、创建统一密码为 `88888888` 的 `staff` 员工与 `admin` HR 演示账号、生成查询/意见/处理进度样例、构建 BGE 索引并构建前端。复制配置后必须将 `backend/.env` 中的 `SECRET_KEY` 改为随机长字符串；DeepSeek 密钥可留空，系统会进入本地证据降级模式。
+脚本会安装依赖、复制缺失的 `.env`、执行全部数据库迁移、幂等导入 15 类“实训模拟企业 HR 制度知识库”制度、创建统一密码为 `88888888` 的 `staff` 员工与 `admin` HR 演示账号、生成查询/意见/处理进度样例、构建 BGE 索引并构建前端。这些制度仅用于教学和功能验证，不代表任何真实企业。复制配置后必须将 `backend/.env` 中的 `SECRET_KEY` 改为随机长字符串；DeepSeek 密钥可留空，系统会进入本地证据降级模式。
 
 重复初始化时可使用：
 
@@ -61,6 +61,11 @@ python -m venv backend\.venv
 | `DEEPSEEK_API_KEY` | 在线结构化生成 | 可空；空时降级 |
 | `DEEPSEEK_MODEL` | 模型名 | `deepseek-v4-flash` |
 | `DEEPSEEK_TIMEOUT_SECONDS` | 模型超时 | 30 秒 |
+| `DEEPSEEK_MAX_RETRIES` | 临时错误最大重试次数 | 2；代码强制上限为 2 |
+| `DEEPSEEK_RETRY_BACKOFF_SECONDS` | 首次重试等待时间 | 0.25 秒；后续指数退避 |
+| `POLICY_GAP_SCAN_ENABLED` | 启用后台制度漏洞定期扫描 | `true` |
+| `POLICY_GAP_SCAN_INTERVAL_HOURS` | 两次制度漏洞扫描的最短间隔 | 24 小时 |
+| `POLICY_GAP_SCAN_POLL_SECONDS` | 后台检查扫描是否到期的轮询间隔 | 300 秒 |
 | `EMBEDDING_MODEL` | 中文嵌入模型 | `BAAI/bge-small-zh-v1.5` |
 | `UPLOAD_MAX_MB` | 制度文件上限 | 10 MB |
 | `VITE_API_BASE_URL` | 前端 API 基址 | `http://127.0.0.1:5000/api/v1` |

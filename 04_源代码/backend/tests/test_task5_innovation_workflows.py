@@ -54,8 +54,11 @@ def seed_index(app):
 
 def evidence_generator(_question, _history, evidence):
     return {
-        "summary": "结构化占位",
+        "decision": "allowed",
+        "conclusion": "可以",
         "claims": [{"text": item["quote"], "evidence_ids": [item["id"]]} for item in evidence[:2]],
+        "next_steps": [{"text": "按制度要求提交申请。", "evidence_ids": [evidence[0]["id"]]}],
+        "missing_conditions": [],
     }
 
 
@@ -149,6 +152,7 @@ def test_stale_answer_refreshes_without_overwriting_history(client, app):
     assert payload["meta"]["previous_knowledge_fingerprint"] == "outdated-fingerprint"
     old_detail = client.get(f"/api/v1/answers/{original['answer_id']}", headers=CLIENT_HEADERS).get_json()["data"]
     assert old_detail["stale"] is True
+    assert "policy_updates" in old_detail
 
 
 def test_current_answer_does_not_need_refresh(client, app):

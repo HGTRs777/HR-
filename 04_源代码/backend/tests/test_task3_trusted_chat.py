@@ -53,8 +53,11 @@ def seed_index(app):
 
 def evidence_bound_generator(_question, _history, evidence):
     return {
-        "summary": "仅作为结构化占位",
+        "decision": "informational",
+        "conclusion": "需要",
         "claims": [{"text": evidence[0]["quote"], "evidence_ids": [evidence[0]["id"]]}],
+        "next_steps": [],
+        "missing_conditions": [],
     }
 
 
@@ -95,7 +98,7 @@ def test_valid_claim_and_evidence_are_persisted(client, app):
     assert data["status"] == "answer"
     assert data["evidence_coverage"] == 1.0
     assert data["claims"][0]["evidence_ids"] == [data["evidence"][0]["id"]]
-    assert data["summary"] == data["claims"][0]["text"]
+    assert data["summary"] == "需要"
     assert data["stale"] is False
     with app.app_context():
         assert db.session.scalar(db.select(Claim).where(Claim.answer_id == data["answer_id"])) is not None
@@ -105,8 +108,9 @@ def test_valid_claim_and_evidence_are_persisted(client, app):
 def test_invalid_evidence_id_is_never_exposed_as_answer(client, app):
     seed_index(app)
     app.config["ANSWER_GENERATOR"] = lambda *_args: {
-        "summary": "无效引用",
+        "decision": "allowed", "conclusion": "可以",
         "claims": [{"text": "没有依据的结论", "evidence_ids": ["evidence-999"]}],
+        "next_steps": [], "missing_conditions": [],
     }
     data = client.post(
         "/api/v1/chat/query",
@@ -121,8 +125,9 @@ def test_invalid_evidence_id_is_never_exposed_as_answer(client, app):
 def test_numeric_hallucination_is_rejected(client, app):
     seed_index(app)
     app.config["ANSWER_GENERATOR"] = lambda _question, _history, evidence: {
-        "summary": "错误数字",
+        "decision": "allowed", "conclusion": "可以",
         "claims": [{"text": "年假一律为 99 天。", "evidence_ids": [evidence[0]["id"]]}],
+        "next_steps": [], "missing_conditions": [],
     }
     data = client.post(
         "/api/v1/chat/query",
@@ -163,6 +168,21 @@ def test_conversations_are_isolated_and_deletable(client, other_employee_client,
     created = client.post("/api/v1/conversations", headers=CLIENT_HEADERS, json={"title": "我的会话"}).get_json()["data"]
     assert other_employee_client.get(f"/api/v1/conversations/{created['id']}", headers=OTHER_HEADERS).status_code == 404
     assert len(client.get("/api/v1/conversations", headers=CLIENT_HEADERS).get_json()["data"]) == 1
+    assert other_employee_client.patch(
+        f"/api/v1/conversations/{created['id']}", headers=OTHER_HEADERS, json={"title": "越权修改"},
+    ).status_code == 404
+    updated = client.patch(
+        f"/api/v1/conversations/{created['id']}", headers=CLIENT_HEADERS,
+        json={"title": "重新命名的会话", "is_pinned": True},
+    )
+    assert updated.status_code == 200
+    assert updated.get_json()["data"]["title"] == "重新命名的会话"
+    assert updated.get_json()["data"]["is_pinned"] is True
+    listed = client.get("/api/v1/conversations", headers=CLIENT_HEADERS).get_json()["data"][0]
+    assert listed["title"] == "重新命名的会话" and listed["is_pinned"] is True
+    assert client.patch(
+        f"/api/v1/conversations/{created['id']}", headers=CLIENT_HEADERS, json={"title": "   "},
+    ).status_code == 400
     assert client.delete(f"/api/v1/conversations/{created['id']}", headers=CLIENT_HEADERS).status_code == 200
     with app.app_context():
         assert db.session.get(Conversation, created["id"]) is None

@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 import json
-from datetime import timedelta
+from datetime import date, timedelta
+from io import BytesIO
 from pathlib import Path
 
 import click
@@ -11,6 +12,7 @@ from werkzeug.datastructures import FileStorage
 from werkzeug.security import generate_password_hash
 
 from .extensions import db
+from .demo_policy_catalog import LIBRARY_NAME, POLICY_CATALOG, catalog_clause_count, render_policy
 from .models import (
     AdminUser,
     Answer,
@@ -27,17 +29,11 @@ from .models import (
     utcnow,
 )
 from .services.indexing import rebuild_index
+from .services.employee_context import build_employee_business_context
 from .services.policies import create_policy_version, update_policy_version
 from .services.retrieval import hybrid_search
 
 
-SAMPLE_POLICIES = [
-    ("ATTEND-001", "考勤管理制度", "考勤", "考勤管理制度.md"),
-    ("LEAVE-001", "休假管理制度", "休假", "休假管理制度.md"),
-    ("PAY-001", "薪酬福利制度", "薪酬福利", "薪酬福利制度.md"),
-    ("TRAVEL-001", "差旅报销制度", "差旅", "差旅报销制度.md"),
-    ("LIFECYCLE-001", "入离职管理制度", "员工关系", "入离职管理制度.md"),
-]
 DEMO_PASSWORD = "88888888"
 
 
@@ -85,22 +81,116 @@ def register_cli(app: Flask) -> None:
             staff = EmployeeUser(
                 username="staff",
                 password_hash=password_hash,
-                display_name="演示员工",
+                display_name="陈晨 · 工号 E1001",
                 department="产品与技术中心",
             )
             db.session.add(staff)
         else:
             staff.password_hash = password_hash
             staff.is_active = True
+            staff.display_name = "陈晨 · 工号 E1001"
+        staff.department = "产品与技术中心"
+        staff.job_title = "产品经理"
+        staff.hire_date = date(2023, 3, 1)
+        staff.employee_status = "regular"
+        staff.tenure_years = 3.5
+        staff.direct_manager = "王强"
+        staff.hrbp = "李娜"
+        staff.annual_leave_entitlement = 5
+        staff.annual_leave_balance = 3.5
         db.session.flush()
+
+        staff_profile = build_employee_business_context(staff).profile_snapshot
 
         client_session_id = f"employee-{staff.id}"
         existing = db.session.scalar(
-            db.select(Conversation).where(
+            db.select(Conversation).join(Answer).where(
                 Conversation.client_session_id == client_session_id,
-                Conversation.title.like("[演示]%"),
+                Answer.knowledge_fingerprint == "demo-seed",
             )
         )
+        legacy_conversations = list(
+            db.session.scalars(
+                db.select(Conversation).where(
+                    Conversation.client_session_id == client_session_id,
+                    Conversation.title.like("[演示]%"),
+                )
+            )
+        )
+        for conversation in legacy_conversations:
+            conversation.title = (conversation.title or "").removeprefix("[演示]").strip()
+        answer_contracts = {
+            "年假如何计算？": {
+                "status": "answer",
+                "decision": "allowed",
+                "summary": "符合",
+                "missing_conditions": [],
+                "next_steps": [{"text": "按 3.5 年累计工龄对应的年假档位核对可用余额。", "evidence_ids": []}],
+                "clarification": {},
+                "content": (
+                    "明确结论：符合\n"
+                    "原因：系统已从当前员工档案取得正式员工状态和 3.5 年累计工龄，无需再次填写。\n"
+                    "下一步：按对应年假档位核对当前 3.5 天可用余额后申请。\n"
+                    "制度依据：《休假管理制度》关于年假资格与累计工龄档位的规定。"
+                ),
+            },
+            "差旅报销最晚什么时候提交？": {
+                "status": "answer",
+                "decision": "informational",
+                "summary": "需要",
+                "missing_conditions": [],
+                "next_steps": [{"text": "差旅结束后 10 个工作日内提交报销单及合规票据。", "evidence_ids": []}],
+                "clarification": {},
+                "content": (
+                    "明确结论：需要\n"
+                    "原因：差旅结束后必须在制度规定期限内提交报销材料。\n"
+                    "下一步：请在差旅结束后 10 个工作日内提交报销单及合规票据。\n"
+                    "制度依据：《差旅报销制度》关于报销时限和票据要求的规定。"
+                ),
+            },
+            "试用期可以申请年假吗？": {
+                "status": "answer",
+                "decision": "allowed",
+                "summary": "可以",
+                "missing_conditions": [],
+                "next_steps": [{"text": "当前档案为正式员工，可直接按年假流程申请。", "evidence_ids": []}],
+                "clarification": {},
+                "content": (
+                    "明确结论：可以\n"
+                    "原因：系统优先使用当前登录档案；该员工为正式员工、累计工龄 3.5 年，符合年假资格。\n"
+                    "下一步：核对当前 3.5 天年假余额后提交申请。\n"
+                    "制度依据：《休假管理制度》关于年假资格与累计工龄的规定。"
+                ),
+            },
+            "入职需要准备哪些材料？": {
+                "status": "degraded",
+                "decision": "informational",
+                "summary": "需要",
+                "missing_conditions": [],
+                "next_steps": [{"text": "按入职通知准备身份、学历和公司要求的其他材料。", "evidence_ids": []}],
+                "clarification": {},
+                "content": (
+                    "明确结论：需要\n"
+                    "原因：办理入职必须提交身份、学历及公司通知列明的材料。\n"
+                    "下一步：请按入职通知逐项准备，并在报到前向 HR 确认材料是否齐全。\n"
+                    "制度依据：当前为本地降级提示，请以《入离职管理制度》原文和 HR 通知为准。"
+                ),
+            },
+            "公司附近有哪些餐厅？": {
+                "status": "refusal",
+                "decision": "informational",
+                "summary": "条件不足，暂时无法判断",
+                "missing_conditions": [],
+                "next_steps": [],
+                "clarification": {},
+                "content": (
+                    "明确结论：条件不足，暂时无法判断\n"
+                    "原因：该问题不属于公司 HR 制度范围，当前制度库没有可核验依据。\n"
+                    "下一步：请改用地图或生活服务工具查询。\n"
+                    "制度依据：无；系统不会用无关制度拼接答案。"
+                ),
+            },
+        }
         if existing is None:
             now = utcnow()
             policies = list(db.session.scalars(db.select(Policy).order_by(Policy.id)))
@@ -116,7 +206,7 @@ def register_cli(app: Flask) -> None:
                 created_at = now - timedelta(days=8 - index * 2, hours=index)
                 conversation = Conversation(
                     client_session_id=client_session_id,
-                    title=f"[演示] {question}",
+                    title=question,
                     scenario_state={"employee_status": "regular"} if index != 2 else {"employee_status": "probation"},
                     created_at=created_at,
                     updated_at=created_at + timedelta(minutes=3),
@@ -130,6 +220,7 @@ def register_cli(app: Flask) -> None:
                     status=status,
                     summary=summary,
                     scenario=conversation.scenario_state,
+                    employee_profile_snapshot=staff_profile,
                     clarification={
                         "slot": "tenure_years",
                         "question": "你的累计工龄是多少？",
@@ -244,6 +335,49 @@ def register_cli(app: Flask) -> None:
                         )
                     )
 
+        # Keep previously seeded chat records aligned with the current answer contract.
+        # This intentionally runs even when demo data already exists.
+        for question, contract in answer_contracts.items():
+            conversation = db.session.scalar(
+                db.select(Conversation).join(Answer).where(
+                    Conversation.client_session_id == client_session_id,
+                    Conversation.title == question,
+                    Answer.knowledge_fingerprint == "demo-seed",
+                )
+            )
+            if conversation is None:
+                continue
+            answer = db.session.scalar(
+                db.select(Answer)
+                .where(
+                    Answer.conversation_id == conversation.id,
+                    Answer.question == question,
+                    Answer.knowledge_fingerprint == "demo-seed",
+                )
+                .order_by(Answer.created_at.desc())
+            )
+            if answer is None:
+                continue
+            answer.status = contract["status"]
+            answer.decision = contract["decision"]
+            answer.summary = contract["summary"]
+            answer.missing_conditions = contract["missing_conditions"]
+            answer.next_steps = contract["next_steps"]
+            answer.clarification = contract["clarification"]
+            answer.employee_profile_snapshot = staff_profile
+            answer.scenario = {
+                **(answer.scenario or {}),
+                **{field: value for field, value in staff_profile.items() if value is not None},
+            }
+            conversation.scenario_state = answer.scenario
+            assistant_message = db.session.scalar(
+                db.select(Message)
+                .where(Message.conversation_id == conversation.id, Message.role == MessageRole.ASSISTANT.value)
+                .order_by(Message.created_at.desc())
+            )
+            if assistant_message is not None:
+                assistant_message.content = contract["content"]
+
         db.session.commit()
         click.echo("Demo accounts ready: staff / 88888888, admin / 88888888")
         click.echo("Employee query, feedback and HR processing records are ready.")
@@ -251,35 +385,50 @@ def register_cli(app: Flask) -> None:
     @app.cli.command("seed-policies")
     @with_appcontext
     def seed_policies() -> None:
-        """Load and activate the five fictional demonstration policies."""
+        """Load and activate the explicitly fictional training policy catalog."""
         sample_root = Path(app.root_path).parent / "sample_policies"
-        for code, title, category, filename in SAMPLE_POLICIES:
+        sample_root.mkdir(parents=True, exist_ok=True)
+        for spec in POLICY_CATALOG:
+            code = spec["code"]
+            version_name = spec["version"]
+            rendered = render_policy(spec)
+            source = sample_root / spec["filename"]
+            source.write_text(rendered, encoding="utf-8")
             policy = db.session.scalar(db.select(Policy).where(Policy.code == code))
             version = None
             if policy:
                 version = db.session.scalar(
-                    db.select(PolicyVersion).where(PolicyVersion.policy_id == policy.id, PolicyVersion.version == "1.0")
+                    db.select(PolicyVersion).where(
+                        PolicyVersion.policy_id == policy.id,
+                        PolicyVersion.version == version_name,
+                    )
                 )
             if version is None:
-                source = sample_root / filename
-                with source.open("rb") as stream:
-                    policy = create_policy_version(
-                        {
-                            "code": code,
-                            "title": title,
-                            "category": category,
-                            "version": "1.0",
-                            "effective_date": "2026-08-01",
-                        },
-                        FileStorage(stream=stream, filename=filename, content_type="text/markdown"),
-                    )
+                policy = create_policy_version(
+                    {
+                        "code": code,
+                        "title": spec["title"],
+                        "category": spec["category"],
+                        "version": version_name,
+                        "effective_date": spec["effective_date"],
+                    },
+                    FileStorage(
+                        stream=BytesIO(rendered.encode("utf-8")),
+                        filename=spec["filename"],
+                        content_type="text/markdown",
+                    ),
+                )
                 version = db.session.scalar(
-                    db.select(PolicyVersion).where(PolicyVersion.policy_id == policy.id, PolicyVersion.version == "1.0")
+                    db.select(PolicyVersion).where(
+                        PolicyVersion.policy_id == policy.id,
+                        PolicyVersion.version == version_name,
+                    )
                 )
             assert version is not None
             if version.status != "active":
                 update_policy_version(version.id, {"status": "active"})
-            click.echo(f"Seeded {code} v1.0 ({len(version.clauses)} clauses).")
+            click.echo(f"Seeded {code} v{version_name} ({len(version.clauses)} clauses).")
+        click.echo(f"{LIBRARY_NAME}: {len(POLICY_CATALOG)} policies, {catalog_clause_count()} active clauses expected.")
 
     @app.cli.command("build-index")
     @with_appcontext

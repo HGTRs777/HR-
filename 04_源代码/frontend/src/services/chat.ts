@@ -46,6 +46,15 @@ export async function removeConversation(id: string): Promise<void> {
   await http.delete(`/conversations/${id}`)
 }
 
+export async function updateConversation(
+  id: string, payload: { title?: string; is_pinned?: boolean },
+): Promise<{ id: string; title: string | null; is_pinned: boolean; updated_at: string }> {
+  const response = await http.patch<ApiSuccess<{ id: string; title: string | null; is_pinned: boolean; updated_at: string }>>(
+    `/conversations/${id}`, payload,
+  )
+  return response.data.data
+}
+
 export async function fetchPolicyReader(versionId: number): Promise<PolicyReader> {
   const response = await http.get<ApiSuccess<PolicyReader>>(`/policies/${versionId}/reader`)
   return response.data.data

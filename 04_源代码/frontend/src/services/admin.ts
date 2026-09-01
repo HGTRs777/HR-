@@ -3,10 +3,19 @@ import type {
   AdminSession,
   AnalyticsSummary,
   ApiSuccess,
+  ClauseReferences,
   IndexStatus,
   PolicyReader,
   PolicySummary,
   PolicyVersionSummary,
+  PolicyGapScan,
+  PolicyIssue,
+  PolicyBriefing,
+  PolicyInsights,
+  PolicySummaryStats,
+  PolicyIssueRetest,
+  PolicyIssueSource,
+  PolicyIssueStatus,
   FeedbackRecord,
   FeedbackStatus,
   FeedbackType,
@@ -78,18 +87,23 @@ export async function fetchAdminPolicyReader(versionId: number): Promise<PolicyR
   return response.data.data
 }
 
+export async function fetchClauseReferences(clauseId: number): Promise<ClauseReferences> {
+  const response = await http.get<ApiSuccess<ClauseReferences>>(`/admin/clauses/${clauseId}/references`)
+  return response.data.data
+}
+
 export async function fetchIndexStatus(): Promise<IndexStatus> {
   const response = await http.get<ApiSuccess<IndexStatus>>('/admin/index/status')
   return response.data.data
 }
 
 export async function rebuildIndex(): Promise<IndexStatus> {
-  const response = await http.post<ApiSuccess<IndexStatus>>('/admin/index/rebuild')
+  const response = await http.post<ApiSuccess<IndexStatus>>('/admin/index/rebuild', undefined, { timeout: 180_000 })
   return response.data.data
 }
 
 export async function testSearch(question: string): Promise<SearchTestResponse> {
-  const response = await http.post<ApiSuccess<SearchTestResponse>>('/admin/search/test', { question })
+  const response = await http.post<ApiSuccess<SearchTestResponse>>('/admin/search/test', { question }, { timeout: 60_000 })
   return response.data.data
 }
 
@@ -99,6 +113,10 @@ export interface AdminFeedbackFilters {
   policy_id?: number | ''
   date_from?: string
   date_to?: string
+  answer_status?: string
+  question_type?: string
+  only_missed?: boolean
+  only_negative?: boolean
 }
 
 export async function fetchAdminFeedback(filters: AdminFeedbackFilters = {}): Promise<FeedbackRecord[]> {
@@ -137,7 +155,68 @@ export async function fetchAnalytics(params: AdminFeedbackFilters = {}): Promise
       date_to: params.date_to,
       policy_id: params.policy_id,
       feedback_status: params.status,
+      answer_status: params.answer_status,
+      question_type: params.question_type,
+      only_missed: params.only_missed || undefined,
+      only_negative: params.only_negative || undefined,
     },
   })
+  return response.data.data
+}
+
+export async function fetchPolicySummary(): Promise<PolicySummaryStats> {
+  const response = await http.get<ApiSuccess<PolicySummaryStats>>('/admin/policy-summary')
+  return response.data.data
+}
+
+export async function fetchPolicyBriefing(range: 'today' | 'week'): Promise<PolicyBriefing> {
+  const response = await http.get<ApiSuccess<PolicyBriefing>>('/admin/policy-briefing', { params: { range } })
+  return response.data.data
+}
+
+export async function fetchPolicyInsights(days: 7 | 30): Promise<PolicyInsights> {
+  const response = await http.get<ApiSuccess<PolicyInsights>>('/admin/policy-insights', { params: { days } })
+  return response.data.data
+}
+
+export async function fetchLatestPolicyGapScan(): Promise<PolicyGapScan | null> {
+  const response = await http.get<ApiSuccess<PolicyGapScan | null>>('/admin/policy-gaps/latest')
+  return response.data.data
+}
+
+export async function runPolicyGapScan(): Promise<PolicyGapScan> {
+  const response = await http.post<ApiSuccess<PolicyGapScan>>('/admin/policy-gaps/scan')
+  return response.data.data
+}
+
+export interface PolicyIssueFilters {
+  source?: PolicyIssueSource | ''
+  severity?: PolicyIssue['severity'] | ''
+  status?: PolicyIssueStatus | ''
+}
+
+export async function fetchPolicyIssues(filters: PolicyIssueFilters = {}): Promise<PolicyIssue[]> {
+  const response = await http.get<ApiSuccess<PolicyIssue[]>>('/admin/policy-issues', { params: filters })
+  return response.data.data
+}
+
+export async function createPolicyIssueFromInsight(payload: {
+  question: string
+  category: PolicyIssue['category']
+  occurrences: number
+}): Promise<{ issue: PolicyIssue; created: boolean }> {
+  const response = await http.post<ApiSuccess<{ issue: PolicyIssue; created: boolean }>>('/admin/policy-issues', payload)
+  return response.data.data
+}
+
+export async function updatePolicyIssue(
+  id: number, action: 'start_processing' | 'add_note' | 'resolve' | 'reopen', note?: string,
+): Promise<PolicyIssue> {
+  const response = await http.patch<ApiSuccess<PolicyIssue>>(`/admin/policy-issues/${id}`, { action, note })
+  return response.data.data
+}
+
+export async function retestPolicyIssue(id: number): Promise<PolicyIssueRetest> {
+  const response = await http.post<ApiSuccess<PolicyIssueRetest>>(`/admin/policy-issues/${id}/retest`, undefined, { timeout: 60_000 })
   return response.data.data
 }

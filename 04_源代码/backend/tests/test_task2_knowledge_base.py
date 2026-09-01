@@ -9,7 +9,7 @@ from werkzeug.security import generate_password_hash
 
 from app.errors import ApiError, ErrorCode
 from app.extensions import db
-from app.models import AdminUser, IndexSnapshot, Policy, PolicyVersion
+from app.models import AdminUser, Answer, Claim, ClaimEvidence, Clause, Conversation, IndexSnapshot, Policy, PolicyVersion
 from app.services.chunking import split_clauses
 from app.services.file_parser import TextBlock, parse_document
 
@@ -105,6 +105,48 @@ def test_upload_version_activation_reader_and_index(client, app):
     assert search.get_json()["data"]["results"][0]["clause_number"] == "第二条"
     with app.app_context():
         assert db.session.scalar(db.select(IndexSnapshot).where(IndexSnapshot.is_current.is_(True))) is not None
+
+
+def test_clause_reference_drilldown_uses_real_answer_evidence(client, app):
+    create_admin(app)
+    login(client)
+    version_id = upload(client).get_json()["data"]["versions"][0]["id"]
+    reader = client.get(f"/api/v1/policies/{version_id}/reader").get_json()["data"]
+    clause_id = reader["clauses"][0]["clause_id"]
+
+    empty = client.get(f"/api/v1/admin/clauses/{clause_id}/references")
+    assert empty.status_code == 200
+    assert empty.get_json()["data"]["total_references"] == 0
+
+    with app.app_context():
+        clause = db.session.get(Clause, clause_id)
+        conversation = Conversation(client_session_id="employee-real-1", title="年假咨询")
+        db.session.add(conversation)
+        db.session.flush()
+        answer = Answer(
+            conversation_id=conversation.id, question="年假如何计算？", normalized_question="年假如何计算",
+            status="answer", summary="员工年假为五天。", scenario={}, clarification={}, action_card={},
+            evidence_snapshot=[], evidence_coverage=1.0, generation_kind="query", is_degraded=False,
+        )
+        db.session.add(answer)
+        db.session.flush()
+        claim = Claim(answer_id=answer.id, position=1, text="员工年假为五天。", evidence_validated=True)
+        db.session.add(claim)
+        db.session.flush()
+        db.session.add(ClaimEvidence(
+            claim_id=claim.id, clause_id=clause_id, rank=2, quote_snapshot=clause.text,
+            policy_version_snapshot="1.0",
+        ))
+        db.session.commit()
+
+    response = client.get(f"/api/v1/admin/clauses/{clause_id}/references")
+    assert response.status_code == 200
+    data = response.get_json()["data"]
+    assert data["total_references"] == 1
+    assert data["question_count"] == 1
+    assert data["questions"][0]["question"] == "年假如何计算？"
+    assert data["questions"][0]["average_rank"] == 2.0
+    assert client.get("/api/v1/admin/clauses/999999/references").status_code == 404
 
 
 def test_single_active_version_and_index_becomes_stale(client, app):

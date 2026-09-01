@@ -6,11 +6,26 @@ from ..errors import ApiError, ErrorCode, success
 from ..extensions import db
 from ..models import AdminUser, EmployeeUser, utcnow
 from ..security import issue_csrf_token, issue_human_challenge, verify_human_challenge
+from ..services.employee_context import employee_profile_payload
 
 
 security_bp = Blueprint("security", __name__)
 employee_security_bp = Blueprint("employee_security", __name__)
 human_security_bp = Blueprint("human_security", __name__)
+
+
+def _admin_payload(user: AdminUser) -> dict:
+    display_name = "李娜 · 工号 HR1001" if user.username == "admin" else user.username
+    return {"id": user.id, "username": user.username, "display_name": display_name}
+
+
+def _employee_payload(user: EmployeeUser) -> dict:
+    return {
+        "id": user.id,
+        "username": user.username,
+        "display_name": user.display_name,
+        **employee_profile_payload(user),
+    }
 
 
 @human_security_bp.get("/human-challenge")
@@ -38,7 +53,7 @@ def login():
     session["admin_user_id"] = user.id
     user.last_login_at = utcnow()
     db.session.commit()
-    return success({"authenticated": True, "admin": {"id": user.id, "username": user.username}, "csrf_token": issue_csrf_token()})
+    return success({"authenticated": True, "admin": _admin_payload(user), "csrf_token": issue_csrf_token()})
 
 
 @security_bp.post("/logout")
@@ -54,7 +69,7 @@ def auth_session():
     return success(
         {
             "authenticated": user is not None,
-            "admin": {"id": user.id, "username": user.username} if user else None,
+            "admin": _admin_payload(user) if user else None,
         }
     )
 
@@ -77,12 +92,7 @@ def employee_login():
     return success(
         {
             "authenticated": True,
-            "employee": {
-                "id": user.id,
-                "username": user.username,
-                "display_name": user.display_name,
-                "department": user.department,
-            },
+            "employee": _employee_payload(user),
         }
     )
 
@@ -100,12 +110,7 @@ def employee_auth_session():
     return success(
         {
             "authenticated": user is not None,
-            "employee": {
-                "id": user.id,
-                "username": user.username,
-                "display_name": user.display_name,
-                "department": user.department,
-            }
+            "employee": _employee_payload(user)
             if user
             else None,
         }

@@ -12,12 +12,14 @@ from .chat import get_answer, serialize_answer
 from .retrieval import hybrid_search
 
 
-FEEDBACK_TYPES = {"wrong_answer", "missing_policy", "outdated_policy", "unclear", "suggestion"}
+FEEDBACK_TYPES = {"helpful", "wrong_answer", "missing_policy", "outdated_policy", "unclear", "missing_process", "suggestion"}
 AUTO_CATEGORIES = {
+    "helpful": "helpful",
     "wrong_answer": "accuracy",
     "missing_policy": "coverage",
     "outdated_policy": "freshness",
     "unclear": "usability",
+    "missing_process": "usability",
     "suggestion": "co_creation",
 }
 TRANSITIONS = {
@@ -73,7 +75,7 @@ def serialize_feedback(item: Feedback, *, include_snapshot: bool = False) -> dic
     return result
 
 
-def create_feedback(client_session_id: str, payload: dict[str, Any]) -> Feedback:
+def create_feedback(client_session_id: str, payload: dict[str, Any], *, employee_name: str) -> Feedback:
     allowed = {"answer_id", "feedback_type", "content", "is_anonymous", "submitter_name"}
     unknown = set(payload) - allowed
     if unknown:
@@ -93,10 +95,7 @@ def create_feedback(client_session_id: str, payload: dict[str, Any]) -> Feedback
         raise ApiError(ErrorCode.VALIDATION_ERROR, "is_anonymous 必须为布尔值", 400)
     submitter_name = None
     if not is_anonymous:
-        value = payload.get("submitter_name")
-        if not isinstance(value, str) or not 1 <= len(value.strip()) <= 80:
-            raise ApiError(ErrorCode.VALIDATION_ERROR, "实名意见必须填写 1 到 80 字姓名", 400)
-        submitter_name = value.strip()
+        submitter_name = employee_name.strip()
     serialized = serialize_answer(answer)
     snapshot = {"question": answer.question, "normalized_question": answer.normalized_question, **serialized}
     evidence = snapshot.get("evidence") or []

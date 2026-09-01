@@ -6,7 +6,7 @@ from datetime import date
 from werkzeug.security import generate_password_hash
 
 from app.extensions import db
-from app.models import AdminUser, Clause, Feedback, FeedbackEvent, Policy, PolicyVersion, RegressionCase
+from app.models import AdminUser, Clause, Feedback, FeedbackEvent, Policy, PolicyVersion, QueryLog, RegressionCase
 from app.services.indexing import rebuild_index
 
 
@@ -51,10 +51,16 @@ def seed_environment(app):
             )
         db.session.commit()
         rebuild_index()
-    app.config["ANSWER_GENERATOR"] = lambda _question, _history, evidence: {
-        "summary": "结构化占位",
-        "claims": [{"text": evidence[0]["quote"], "evidence_ids": [evidence[0]["id"]]}],
-    }
+    def generator(question, _history, evidence):
+        needs_status = "离职" in question and "员工状态=" not in question
+        return {
+            "decision": "conditional" if needs_status else "informational",
+            "conclusion": "条件不足，暂时无法判断" if needs_status else "需要",
+            "claims": [{"text": evidence[0]["quote"], "evidence_ids": [evidence[0]["id"]]}],
+            "next_steps": [],
+            "missing_conditions": ["员工状态"] if needs_status else [],
+        }
+    app.config["ANSWER_GENERATOR"] = generator
 
 
 def create_answer(client):
@@ -103,11 +109,16 @@ def test_anonymous_feedback_copies_answer_snapshot_and_is_isolated(client, other
 def test_feedback_validation_and_real_name_rule(client, app):
     seed_environment(app)
     answer = create_answer(client)
-    assert submit_feedback(client, answer["answer_id"], is_anonymous=False, submitter_name="").status_code == 400
-    named = submit_feedback(client, answer["answer_id"], is_anonymous=False, submitter_name="张三")
-    assert named.get_json()["data"]["submitter_name"] == "张三"
+    named = submit_feedback(client, answer["answer_id"], is_anonymous=False, submitter_name="伪造姓名")
+    assert named.status_code == 201
+    assert named.get_json()["data"]["submitter_name"] == "测试员工"
     injected = submit_feedback(client, answer["answer_id"], answer_snapshot={"forged": True})
     assert injected.status_code == 400
+    helpful = submit_feedback(
+        client, answer["answer_id"], feedback_type="helpful", content="这条回答对我有帮助。"
+    )
+    assert helpful.status_code == 201
+    assert helpful.get_json()["data"]["auto_category"] == "helpful"
 
 
 def test_admin_feedback_state_machine_appends_events(client, app):
@@ -155,10 +166,46 @@ def test_analytics_aggregates_queries_feedback_and_filters(client, app):
     data = client.get("/api/v1/admin/analytics").get_json()["data"]
     assert data["query_count"] == 2
     assert data["hit_rate"] == 0.5
+    assert data["trusted_hit_rate"] == 1.0
+    assert data["finalized_query_count"] == 1
     assert data["clarification_rate"] == 0.5
     assert data["feedback_count"] == 1
     assert data["popular_questions"]
+    assert data["popular_questions"][0]["status_counts"]
+    assert data["daily_quality"]
+    assert "period_comparison" in data
     assert data["feedback_by_category"] == [{"category": "usability", "count": 1}]
     filtered = client.get("/api/v1/admin/analytics?feedback_status=open").get_json()["data"]
     assert filtered["feedback_count"] == 1
     assert client.get("/api/v1/admin/analytics?date_from=bad-date").status_code == 400
+
+
+def test_policy_issue_center_deduplicates_sources_and_requires_retest_before_resolution(client, app):
+    seed_environment(app)
+    question = "年假需要提前多久申请？"
+    with app.app_context():
+        db.session.add(QueryLog(question=question, result_status="refusal", hit_count=0))
+        db.session.commit()
+    login(client)
+    first = client.post("/api/v1/admin/policy-issues", json={
+        "question": question, "category": "missing_policy", "occurrences": 5,
+    })
+    assert first.status_code == 201 and first.get_json()["data"]["created"] is True
+    issue = first.get_json()["data"]["issue"]
+    duplicate = client.post("/api/v1/admin/policy-issues", json={
+        "question": question, "category": "missing_policy", "occurrences": 5,
+    })
+    assert duplicate.status_code == 200 and duplicate.get_json()["data"]["created"] is False
+
+    started = client.patch(f"/api/v1/admin/policy-issues/{issue['id']}", json={
+        "action": "start_processing", "note": "补充制度后验证",
+    })
+    assert started.get_json()["data"]["status"] == "processing"
+    assert client.patch(f"/api/v1/admin/policy-issues/{issue['id']}", json={"action": "resolve"}).status_code == 409
+    retested = client.post(f"/api/v1/admin/policy-issues/{issue['id']}/retest")
+    assert retested.status_code == 200 and retested.get_json()["data"]["passed"] is True
+    resolved = client.patch(f"/api/v1/admin/policy-issues/{issue['id']}", json={"action": "resolve"})
+    assert resolved.get_json()["data"]["status"] == "resolved"
+
+    listed = client.get("/api/v1/admin/policy-issues?source=qa_insight").get_json()["data"]
+    assert len(listed) == 1 and listed[0]["origin_question"] == question
